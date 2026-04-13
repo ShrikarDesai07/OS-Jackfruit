@@ -235,4 +235,4 @@ This screenshot shows the kernel monitor module being unloaded successfully with
 
 ## Author
 
-Developed as p
+Developed by Shrikar and Shreyas.
