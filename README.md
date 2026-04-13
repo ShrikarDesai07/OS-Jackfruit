@@ -1,111 +1,238 @@
-# Multi-Container Runtime
+# Linux Multi-Container Runtime
 
-A lightweight Linux container runtime in C with a long-running supervisor and a kernel-space memory monitor.
-
-Read [`project-guide.md`](project-guide.md) for the full project specification.
+A lightweight Linux container runtime built from scratch using C. This project demonstrates container creation, monitoring, scheduling, memory limits, and supervisor-based lifecycle management using Linux namespaces and cgroups.
 
 ---
 
-## Getting Started
+## Features
 
-### 1. Fork the Repository
+* Start and stop isolated containers
+* CPU-bound and I/O-bound workloads
+* Soft and hard memory limits
+* Supervisor daemon for lifecycle management
+* Container monitoring using a kernel module
+* Priority-based scheduling
+* Logging support for each container
+* Graceful shutdown and cleanup
 
-1. Go to [github.com/shivangjhalani/OS-Jackfruit](https://github.com/shivangjhalani/OS-Jackfruit)
-2. Click **Fork** (top-right)
-3. Clone your fork:
+---
 
-```bash
-git clone https://github.com/<your-username>/OS-Jackfruit.git
-cd OS-Jackfruit
+## Project Structure
+
+```text
+.
+├── src/
+│   ├── engine
+│   ├── supervisor
+│   ├── monitor
+│   └── workloads/
+├── rootfs-alpha/
+├── rootfs-beta/
+├── rootfs-base/
+├── screenshots/
+└── README.md
 ```
 
-### 2. Set Up Your VM
+---
 
-You need an **Ubuntu 22.04 or 24.04** VM with **Secure Boot OFF**. WSL will not work.
+## Requirements
+
+* Linux system or virtual machine
+* GCC compiler
+* Make
+* Root privileges
+* Linux kernel headers
 
 Install dependencies:
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential linux-headers-$(uname -r)
+sudo apt install build-essential make gcc linux-headers-$(uname -r)
 ```
-
-### 3. Run the Environment Check
-
-```bash
-cd boilerplate
-chmod +x environment-check.sh
-sudo ./environment-check.sh
-```
-
-Fix any issues reported before moving on.
-
-### 4. Prepare the Root Filesystem
-
-```bash
-mkdir rootfs-base
-wget https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-3.20.3-x86_64.tar.gz
-tar -xzf alpine-minirootfs-3.20.3-x86_64.tar.gz -C rootfs-base
-
-# Make one writable copy per container you plan to run
-cp -a ./rootfs-base ./rootfs-alpha
-cp -a ./rootfs-base ./rootfs-beta
-```
-
-Do not commit `rootfs-base/` or `rootfs-*` directories to your repository.
-
-### 5. Understand the Boilerplate
-
-The `boilerplate/` folder contains starter files:
-
-| File                   | Purpose                                             |
-| ---------------------- | --------------------------------------------------- |
-| `engine.c`             | User-space runtime and supervisor skeleton          |
-| `monitor.c`            | Kernel module skeleton                              |
-| `monitor_ioctl.h`      | Shared ioctl command definitions                    |
-| `Makefile`             | Build targets for both user-space and kernel module |
-| `cpu_hog.c`            | CPU-bound test workload                             |
-| `io_pulse.c`           | I/O-bound test workload                             |
-| `memory_hog.c`         | Memory-consuming test workload                      |
-| `environment-check.sh` | VM environment preflight check                      |
-
-Use these as your starting point. You are free to restructure the repository however you want — the submission requirements are listed in the project guide.
-
-### 6. Build and Verify
-
-```bash
-cd boilerplate
-make
-```
-
-If this compiles without errors, your environment is ready.
-
-### 7. GitHub Actions Smoke Check
-
-Your fork will inherit a minimal GitHub Actions workflow from this repository.
-
-That workflow only performs CI-safe checks:
-
-- `make -C boilerplate ci`
-- user-space binary compilation (`engine`, `memory_hog`, `cpu_hog`, `io_pulse`)
-- `./boilerplate/engine` with no arguments must print usage and exit with a non-zero status
-
-The CI-safe build command is:
-
-```bash
-make -C boilerplate ci
-```
-
-This smoke check does not test kernel-module loading, supervisor runtime behavior, or container execution.
 
 ---
 
-## What to Do Next
+## Build Instructions
 
-Read [`project-guide.md`](project-guide.md) end to end. It contains:
+```bash
+make clean
+make
+```
 
-- The six implementation tasks (multi-container runtime, CLI, logging, kernel monitor, scheduling experiments, cleanup)
-- The engineering analysis you must write
-- The exact submission requirements, including what your `README.md` must contain (screenshots, analysis, design decisions)
+---
 
-Your fork's `README.md` should be replaced with your own project documentation as described in the submission package section of the project guide. (As in get rid of all the above content and replace with your README.md)
+## Running the Supervisor
+
+Start the supervisor in one terminal:
+
+```bash
+sudo ./src/engine supervisor ./rootfs-base
+```
+
+### Supervisor Startup
+
+![Supervisor Startup](screenshots/1.jpeg)
+
+The supervisor initializes the runtime socket, loads the base root filesystem, and waits for container requests.
+
+---
+
+## Starting Containers
+
+Start the CPU-bound and I/O-bound containers:
+
+```bash
+sudo ./src/engine start alpha ./rootfs-alpha "./cpu_hog 15" --soft-mib 48 --hard-mib 80
+
+sudo ./src/engine start beta ./rootfs-beta "./io_pulse 30 100" --soft-mib 64 --hard-mib 96
+```
+
+Check the running containers:
+
+```bash
+sudo ./src/engine ps
+```
+
+### Alpha and Beta Containers Running
+
+![Container Start](screenshots/2.jpeg)
+
+Both containers are successfully started and visible in the container list.
+
+---
+
+## Viewing Container Logs
+
+View logs for each container:
+
+```bash
+sudo ./src/engine logs alpha
+sudo ./src/engine logs beta
+```
+
+### Alpha Container Logs
+
+![Alpha Logs](screenshots/3.jpeg)
+
+The alpha container runs a CPU-intensive workload using `cpu_hog`.
+
+### Beta Container Logs
+
+![Beta Logs](screenshots/4.jpeg)
+
+The beta container runs an I/O-intensive workload using `io_pulse`.
+
+---
+
+## Testing Soft and Hard Memory Limits
+
+Start a memory-intensive container:
+
+```bash
+sudo ./src/engine start delta ./rootfs-alpha "./memory_hog 25 5000" --soft-mib 20 --hard-mib 100
+```
+
+### Memory Hog Container Start
+
+![Memory Hog Start](screenshots/5.jpeg)
+
+The `delta` container is started with a soft memory limit of 20 MiB and a hard memory limit of 100 MiB.
+
+### Soft and Hard Limit Triggered
+
+![Memory Limit Trigger](screenshots/6.jpeg)
+
+The kernel monitor first reports a soft memory warning and later kills the container after exceeding the hard memory limit.
+
+---
+
+## Priority Scheduling Test
+
+Start two CPU-heavy containers:
+
+```bash
+sudo ./src/engine start high_prio ./rootfs-alpha "./cpu_hog 15"
+
+sudo ./src/engine start low_prio ./rootfs-alpha "./cpu_hog 15"
+```
+
+View their logs:
+
+```bash
+sudo ./src/engine logs high_prio
+sudo ./src/engine logs low_prio
+```
+
+### High Priority Container Logs
+
+![High Priority Logs](screenshots/7.jpeg)
+
+### Low Priority Container Logs
+
+![Low Priority Logs](screenshots/8.jpeg)
+
+The higher-priority workload finishes earlier than the lower-priority workload.
+
+---
+
+## Stopping Containers
+
+```bash
+sudo ./src/engine stop delta
+sudo ./src/engine stop high_prio
+sudo ./src/engine stop low_prio
+```
+
+### Stop Commands
+
+![Stop Containers](screenshots/9.jpeg)
+
+The runtime confirms that the containers are no longer running.
+
+---
+
+## Supervisor Shutdown and Cleanup
+
+Shut down the supervisor and remove the kernel module:
+
+```bash
+sudo ./src/engine supervisor-stop
+sudo rmmod monitor
+```
+
+Verify cleanup:
+
+```bash
+ps aux | grep defunct
+sudo dmesg | tail -n 5
+```
+
+### Supervisor Shutdown
+
+![Supervisor Shutdown](screenshots/10.1.jpeg)
+
+This screenshot shows the supervisor shutting down cleanly and stopping all remaining containers.
+
+### Monitor Module Unload
+
+![Monitor Unload](screenshots/10.2.jpeg)
+
+This screenshot shows the kernel monitor module being unloaded successfully with no zombie processes left behind.
+
+---
+
+## Expected Output
+
+* Containers should start and stop correctly
+* Soft memory limit should generate warnings
+* Hard memory limit should terminate the container
+* High-priority workload should complete earlier than low-priority workload
+* Logs should be generated correctly for each container
+* Supervisor should shut down cleanly
+* The monitor kernel module should unload successfully
+
+---
+
+## Author
+
+Developed as p
