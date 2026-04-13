@@ -71,7 +71,7 @@ sudo ./src/engine supervisor ./rootfs-base
 
 ### Supervisor Startup
 
-![Supervisor Startup](screenshots/1.jpeg)
+![Supervisor Startup](Screenshots/1.jpeg)
 
 The supervisor initializes the runtime socket, loads the base root filesystem, and waits for container requests.
 
@@ -95,7 +95,7 @@ sudo ./src/engine ps
 
 ### Alpha and Beta Containers Running
 
-![Container Start](screenshots/2.jpeg)
+![Container Start](Screenshots/2.jpeg)
 
 Both containers are successfully started and visible in the container list.
 
@@ -112,13 +112,13 @@ sudo ./src/engine logs beta
 
 ### Alpha Container Logs
 
-![Alpha Logs](screenshots/3.jpeg)
+![Alpha Logs](Screenshots/3.jpeg)
 
 The alpha container runs a CPU-intensive workload using `cpu_hog`.
 
 ### Beta Container Logs
 
-![Beta Logs](screenshots/4.jpeg)
+![Beta Logs](Screenshots/4.jpeg)
 
 The beta container runs an I/O-intensive workload using `io_pulse`.
 
@@ -134,13 +134,13 @@ sudo ./src/engine start delta ./rootfs-alpha "./memory_hog 25 5000" --soft-mib 2
 
 ### Memory Hog Container Start
 
-![Memory Hog Start](screenshots/5.jpeg)
+![Memory Hog Start](Screenshots/5.jpeg)
 
 The `delta` container is started with a soft memory limit of 20 MiB and a hard memory limit of 100 MiB.
 
 ### Soft and Hard Limit Triggered
 
-![Memory Limit Trigger](screenshots/6.jpeg)
+![Memory Limit Trigger](Screenshots/6.jpeg)
 
 The kernel monitor first reports a soft memory warning and later kills the container after exceeding the hard memory limit.
 
@@ -165,11 +165,11 @@ sudo ./src/engine logs low_prio
 
 ### High Priority Container Logs
 
-![High Priority Logs](screenshots/7.jpeg)
+![High Priority Logs](Screenshots/7.jpeg)
 
 ### Low Priority Container Logs
 
-![Low Priority Logs](screenshots/8.jpeg)
+![Low Priority Logs](Screenshots/8.jpeg)
 
 The higher-priority workload finishes earlier than the lower-priority workload.
 
@@ -185,7 +185,7 @@ sudo ./src/engine stop low_prio
 
 ### Stop Commands
 
-![Stop Containers](screenshots/9.jpeg)
+![Stop Containers](Screenshots/9.jpeg)
 
 The runtime confirms that the containers are no longer running.
 
@@ -209,13 +209,13 @@ sudo dmesg | tail -n 5
 
 ### Supervisor Shutdown
 
-![Supervisor Shutdown](screenshots/10.1.jpeg)
+![Supervisor Shutdown](Screenshots/10.1.jpeg)
 
 This screenshot shows the supervisor shutting down cleanly and stopping all remaining containers.
 
 ### Monitor Module Unload
 
-![Monitor Unload](screenshots/10.2.jpeg)
+![Monitor Unload](Screenshots/10.2.jpeg)
 
 This screenshot shows the kernel monitor module being unloaded successfully with no zombie processes left behind.
 
