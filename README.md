@@ -21,7 +21,7 @@ A lightweight Linux container runtime built from scratch using C. This project d
 
 ```text
 .
-├── src/
+├── boilerplate/
 │   ├── engine
 │   ├── supervisor
 │   ├── monitor
@@ -66,7 +66,7 @@ make
 Start the supervisor in one terminal:
 
 ```bash
-sudo ./src/engine supervisor ./rootfs-base
+sudo ./boilerplate/engine supervisor ./rootfs-base
 ```
 
 ### Supervisor Startup
@@ -82,15 +82,15 @@ The supervisor initializes the runtime socket, loads the base root filesystem, a
 Start the CPU-bound and I/O-bound containers:
 
 ```bash
-sudo ./src/engine start alpha ./rootfs-alpha "./cpu_hog 15" --soft-mib 48 --hard-mib 80
+sudo ./boilerplate/engine start alpha ./rootfs-alpha "./cpu_hog 15" --soft-mib 48 --hard-mib 80
 
-sudo ./src/engine start beta ./rootfs-beta "./io_pulse 30 100" --soft-mib 64 --hard-mib 96
+sudo ./boilerplate/engine start beta ./rootfs-beta "./io_pulse 30 100" --soft-mib 64 --hard-mib 96
 ```
 
 Check the running containers:
 
 ```bash
-sudo ./src/engine ps
+sudo ./boilerplate/engine ps
 ```
 
 ### Alpha and Beta Containers Running
@@ -106,8 +106,8 @@ Both containers are successfully started and visible in the container list.
 View logs for each container:
 
 ```bash
-sudo ./src/engine logs alpha
-sudo ./src/engine logs beta
+sudo ./boilerplate/engine logs alpha
+sudo ./boilerplate/engine logs beta
 ```
 
 ### Alpha Container Logs
@@ -129,7 +129,7 @@ The beta container runs an I/O-intensive workload using `io_pulse`.
 Start a memory-intensive container:
 
 ```bash
-sudo ./src/engine start delta ./rootfs-alpha "./memory_hog 25 5000" --soft-mib 20 --hard-mib 100
+sudo ./boilerplate/engine start delta ./rootfs-alpha "./memory_hog 25 5000" --soft-mib 20 --hard-mib 100
 ```
 
 ### Memory Hog Container Start
@@ -151,16 +151,16 @@ The kernel monitor first reports a soft memory warning and later kills the conta
 Start two CPU-heavy containers:
 
 ```bash
-sudo ./src/engine start high_prio ./rootfs-alpha "./cpu_hog 15"
+sudo ./boilerplate/engine start high_prio ./rootfs-alpha "./cpu_hog 15"
 
-sudo ./src/engine start low_prio ./rootfs-alpha "./cpu_hog 15"
+sudo ./boilerplate/engine start low_prio ./rootfs-alpha "./cpu_hog 15"
 ```
 
 View their logs:
 
 ```bash
-sudo ./src/engine logs high_prio
-sudo ./src/engine logs low_prio
+sudo ./boilerplate/engine logs high_prio
+sudo ./boilerplate/engine logs low_prio
 ```
 
 ### High Priority Container Logs
@@ -178,9 +178,9 @@ The higher-priority workload finishes earlier than the lower-priority workload.
 ## Stopping Containers
 
 ```bash
-sudo ./src/engine stop delta
-sudo ./src/engine stop high_prio
-sudo ./src/engine stop low_prio
+sudo ./boilerplate/engine stop delta
+sudo ./boilerplate/engine stop high_prio
+sudo ./boilerplate/engine stop low_prio
 ```
 
 ### Stop Commands
@@ -196,7 +196,7 @@ The runtime confirms that the containers are no longer running.
 Shut down the supervisor and remove the kernel module:
 
 ```bash
-sudo ./src/engine supervisor-stop
+sudo ./boilerplate/engine supervisor-stop
 sudo rmmod monitor
 ```
 
