@@ -1,238 +1,286 @@
-# Linux Multi-Container Runtime
+# Multi-Container Runtime (OS Project)
 
-A lightweight Linux container runtime built from scratch using C. This project demonstrates container creation, monitoring, scheduling, memory limits, and supervisor-based lifecycle management using Linux namespaces and cgroups.
+This repository implements a lightweight Linux container runtime in C with:
 
----
+- A long-running user-space supervisor (engine)
+- A kernel-space memory monitor module (monitor)
+- Multi-container lifecycle management
+- Two IPC paths (control and logging)
+- Bounded-buffer producer-consumer logging pipeline
+- Soft and hard memory-limit enforcement
+- Scheduler-focused workload experiments
 
-## Features
+## 1. Team Information
 
-* Start and stop isolated containers
-* CPU-bound and I/O-bound workloads
-* Soft and hard memory limits
-* Supervisor daemon for lifecycle management
-* Container monitoring using a kernel module
-* Priority-based scheduling
-* Logging support for each container
-* Graceful shutdown and cleanup
+- Member 1: Shrikar (SRN: PES1UG24CS916)
+- Member 2: Shreyas (SRN: PES1UG24CS444)
 
----
+## 2. Build, Load, and Run Instructions
 
-## Project Structure
+### 2.1 Environment
 
-```text
-.
-├── boilerplate/
-│   ├── engine
-│   ├── supervisor
-│   ├── monitor
-│   └── workloads/
-├── rootfs-alpha/
-├── rootfs-beta/
-├── rootfs-base/
-├── screenshots/
-└── README.md
-```
+Recommended environment:
 
----
-
-## Requirements
-
-* Linux system or virtual machine
-* GCC compiler
-* Make
-* Root privileges
-* Linux kernel headers
+- Ubuntu 22.04 or 24.04 VM
+- Secure Boot disabled (required for module load)
+- Linux kernel headers installed
 
 Install dependencies:
 
-```bash
+~~~bash
 sudo apt update
-sudo apt install build-essential make gcc linux-headers-$(uname -r)
-```
+sudo apt install -y build-essential linux-headers-$(uname -r)
+~~~
 
----
+### 2.2 Build
 
-## Build Instructions
+All source files are in boilerplate/.
 
-```bash
-make clean
-make
-```
+~~~bash
+make -C boilerplate clean
+make -C boilerplate
+~~~
 
----
+This builds:
 
-## Running the Supervisor
+- boilerplate/engine (user-space runtime + supervisor)
+- boilerplate/monitor.ko (kernel module)
+- boilerplate/cpu_hog, boilerplate/io_pulse, boilerplate/memory_hog (workloads)
 
-Start the supervisor in one terminal:
+CI-safe compile-only path (user-space only):
 
-```bash
+~~~bash
+make -C boilerplate ci
+~~~
+
+### 2.3 Rootfs Setup
+
+If you do not already have rootfs directories:
+
+~~~bash
+mkdir -p rootfs-base
+wget -O alpine-minirootfs-3.20.3-x86_64.tar.gz \
+	https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-3.20.3-x86_64.tar.gz
+tar -xzf alpine-minirootfs-3.20.3-x86_64.tar.gz -C rootfs-base
+~~~
+
+Create per-container writable copies:
+
+~~~bash
+cp -a ./rootfs-base ./rootfs-alpha
+cp -a ./rootfs-base ./rootfs-beta
+~~~
+
+Copy workload binaries into each rootfs before launching containers:
+
+~~~bash
+cp boilerplate/cpu_hog boilerplate/io_pulse boilerplate/memory_hog rootfs-alpha/
+cp boilerplate/cpu_hog boilerplate/io_pulse boilerplate/memory_hog rootfs-beta/
+~~~
+
+### 2.4 Load Kernel Module
+
+~~~bash
+sudo insmod boilerplate/monitor.ko
+ls -l /dev/container_monitor
+~~~
+
+### 2.5 Start Supervisor
+
+Run in terminal 1:
+
+~~~bash
 sudo ./boilerplate/engine supervisor ./rootfs-base
-```
+~~~
 
-### Supervisor Startup
+### 2.6 CLI Commands (Canonical Contract)
 
-![Supervisor Startup](Screenshots/1.jpeg)
+Run in terminal 2:
 
-The supervisor initializes the runtime socket, loads the base root filesystem, and waits for container requests.
+~~~bash
+# start (background)
+sudo ./boilerplate/engine start alpha ./rootfs-alpha "./cpu_hog 15" --soft-mib 48 --hard-mib 80 --nice -5
+sudo ./boilerplate/engine start beta  ./rootfs-beta  "./io_pulse 30 100" --soft-mib 64 --hard-mib 96 --nice 5
 
----
+# run (foreground; waits for container exit)
+sudo ./boilerplate/engine run gamma ./rootfs-alpha "./cpu_hog 10" --soft-mib 40 --hard-mib 64
 
-## Starting Containers
-
-Start the CPU-bound and I/O-bound containers:
-
-```bash
-sudo ./boilerplate/engine start alpha ./rootfs-alpha "./cpu_hog 15" --soft-mib 48 --hard-mib 80
-
-sudo ./boilerplate/engine start beta ./rootfs-beta "./io_pulse 30 100" --soft-mib 64 --hard-mib 96
-```
-
-Check the running containers:
-
-```bash
+# list metadata
 sudo ./boilerplate/engine ps
-```
 
-### Alpha and Beta Containers Running
-
-![Container Start](Screenshots/2.jpeg)
-
-Both containers are successfully started and visible in the container list.
-
----
-
-## Viewing Container Logs
-
-View logs for each container:
-
-```bash
+# inspect logs
 sudo ./boilerplate/engine logs alpha
-sudo ./boilerplate/engine logs beta
-```
 
-### Alpha Container Logs
+# stop
+sudo ./boilerplate/engine stop alpha
+sudo ./boilerplate/engine stop beta
+~~~
 
-![Alpha Logs](Screenshots/3.jpeg)
+### 2.7 Memory Limit Demo
 
-The alpha container runs a CPU-intensive workload using `cpu_hog`.
-
-### Beta Container Logs
-
-![Beta Logs](Screenshots/4.jpeg)
-
-The beta container runs an I/O-intensive workload using `io_pulse`.
-
----
-
-## Testing Soft and Hard Memory Limits
-
-Start a memory-intensive container:
-
-```bash
+~~~bash
 sudo ./boilerplate/engine start delta ./rootfs-alpha "./memory_hog 25 5000" --soft-mib 20 --hard-mib 100
-```
+sudo dmesg | tail -n 30
+~~~
 
-### Memory Hog Container Start
+Expected behavior:
 
-![Memory Hog Start](Screenshots/5.jpeg)
+- First soft-limit warning in dmesg
+- Later hard-limit kill via SIGKILL when hard limit is exceeded
 
-The `delta` container is started with a soft memory limit of 20 MiB and a hard memory limit of 100 MiB.
+### 2.8 Scheduling Demo
 
-### Soft and Hard Limit Triggered
-
-![Memory Limit Trigger](Screenshots/6.jpeg)
-
-The kernel monitor first reports a soft memory warning and later kills the container after exceeding the hard memory limit.
-
----
-
-## Priority Scheduling Test
-
-Start two CPU-heavy containers:
-
-```bash
-sudo ./boilerplate/engine start high_prio ./rootfs-alpha "./cpu_hog 15"
-
-sudo ./boilerplate/engine start low_prio ./rootfs-alpha "./cpu_hog 15"
-```
-
-View their logs:
-
-```bash
+~~~bash
+sudo ./boilerplate/engine start high_prio ./rootfs-alpha "./cpu_hog 15" --nice -10
+sudo ./boilerplate/engine start low_prio  ./rootfs-beta  "./cpu_hog 15" --nice 10
 sudo ./boilerplate/engine logs high_prio
 sudo ./boilerplate/engine logs low_prio
-```
+~~~
 
-### High Priority Container Logs
+### 2.9 Teardown
 
-![High Priority Logs](Screenshots/7.jpeg)
+Stop remaining containers and supervisor (Ctrl+C on supervisor terminal), then:
 
-### Low Priority Container Logs
-
-![Low Priority Logs](Screenshots/8.jpeg)
-
-The higher-priority workload finishes earlier than the lower-priority workload.
-
----
-
-## Stopping Containers
-
-```bash
-sudo ./boilerplate/engine stop delta
-sudo ./boilerplate/engine stop high_prio
-sudo ./boilerplate/engine stop low_prio
-```
-
-### Stop Commands
-
-![Stop Containers](Screenshots/9.jpeg)
-
-The runtime confirms that the containers are no longer running.
-
----
-
-## Supervisor Shutdown and Cleanup
-
-Shut down the supervisor and remove the kernel module:
-
-```bash
-sudo ./boilerplate/engine supervisor-stop
-sudo rmmod monitor
-```
-
-Verify cleanup:
-
-```bash
+~~~bash
+sudo dmesg | tail -n 50
 ps aux | grep defunct
-sudo dmesg | tail -n 5
-```
+sudo rmmod monitor
+~~~
 
-### Supervisor Shutdown
+## 3. Demo with Screenshots (Annotated)
 
-![Supervisor Shutdown](Screenshots/10.1.jpeg)
+| # | Requirement | Evidence |
+|---|-------------|----------|
+| 1 | Multi-container supervision | ![Supervisor + multiple containers](Screenshots/1.jpeg) and ![Container list](Screenshots/2.jpeg) |
+| 2 | Metadata tracking | ![ps metadata output](Screenshots/2.jpeg) |
+| 3 | Bounded-buffer logging | ![alpha log capture](Screenshots/3.jpeg), ![beta log capture](Screenshots/4.jpeg) |
+| 4 | CLI and IPC | ![start/ps command and supervisor response](Screenshots/2.jpeg) |
+| 5 | Soft-limit warning | ![soft-limit warning shown](Screenshots/6.jpeg) |
+| 6 | Hard-limit enforcement | ![hard-limit kill shown](Screenshots/6.jpeg) with container state update in ps |
+| 7 | Scheduling experiment | ![high-priority run output](Screenshots/7.jpeg), ![low-priority run output](Screenshots/8.jpeg) |
+| 8 | Clean teardown | ![container stop results](Screenshots/9.jpeg), ![supervisor shutdown](Screenshots/10.1.jpeg), ![module unload](Screenshots/10.2.jpeg) |
 
-This screenshot shows the supervisor shutting down cleanly and stopping all remaining containers.
+Captions:
 
-### Monitor Module Unload
+- Screenshot 1: Supervisor running and ready to accept CLI requests.
+- Screenshot 2: Multiple containers tracked concurrently by one supervisor.
+- Screenshot 3 and 4: Per-container logs captured from stdout/stderr through pipe producers and buffered consumer.
+- Screenshot 6: Kernel monitor emits soft-limit warning and hard-limit action.
+- Screenshot 7 and 8: Scheduling experiment outputs for differing priorities.
+- Screenshot 9 and 10.x: Stop path, supervisor cleanup, and module unload.
 
-![Monitor Unload](Screenshots/10.2.jpeg)
+## 4. Engineering Analysis
 
-This screenshot shows the kernel monitor module being unloaded successfully with no zombie processes left behind.
+### 4.1 Isolation Mechanisms
 
----
+Each container is created with clone() flags CLONE_NEWPID, CLONE_NEWUTS, and CLONE_NEWNS. This gives each container its own PID view, hostname domain, and mount namespace. The child then calls chroot(container_rootfs), chdir("/"), and mounts proc inside the container namespace. This isolates process listing and filesystem view while sharing the same host kernel (no separate kernel per container).
 
-## Expected Output
+### 4.2 Supervisor and Process Lifecycle
 
-* Containers should start and stop correctly
-* Soft memory limit should generate warnings
-* Hard memory limit should terminate the container
-* High-priority workload should complete earlier than low-priority workload
-* Logs should be generated correctly for each container
-* Supervisor should shut down cleanly
-* The monitor kernel module should unload successfully
+The long-running supervisor centralizes lifecycle control, metadata, and signal handling. It starts containers, tracks state transitions, reaps children using waitpid(-1, WNOHANG), and avoids zombie leakage. It stores start time, host PID, limits, and final exit reason. A stop_requested flag disambiguates manual stop from hard-limit kill when signal-based exit occurs.
 
----
+### 4.3 IPC, Threads, and Synchronization
 
-## Author
+Two IPC paths are used:
 
-Developed by Shrikar and Shreyas.
+- Control path (Path B): UNIX domain socket /tmp/mini_runtime.sock between short-lived CLI client and supervisor.
+- Logging path (Path A): Per-container pipe from child stdout/stderr to supervisor.
+
+Logging is producer-consumer:
+
+- Producer: one thread per container reads its pipe and pushes chunks.
+- Consumer: one global logging thread pops chunks and appends to logs/<id>.log.
+
+Synchronization:
+
+- Bounded buffer protected by one mutex plus condition variables not_empty and not_full.
+- Container metadata list protected by a separate mutex.
+
+Without these locks, races would corrupt ring-buffer indices, drop entries, or produce inconsistent container states.
+
+### 4.4 Memory Management and Enforcement
+
+The kernel module tracks registered host PIDs and periodically reads RSS via get_mm_rss(). RSS captures resident physical pages mapped by the process, but does not directly represent total virtual allocation. Soft limit and hard limit are intentionally different policies:
+
+- Soft limit: warning-only threshold for early pressure signal.
+- Hard limit: enforced termination threshold for containment.
+
+Kernel-space enforcement is required because user-space polling cannot guarantee timely or authoritative action under all scheduling and privilege scenarios.
+
+### 4.5 Scheduling Behavior
+
+Running concurrent CPU-bound and I/O-bound workloads, and CPU-vs-CPU with different nice values, demonstrates CFS behavior:
+
+- Lower nice value increases CPU share for CPU-bound tasks.
+- I/O-bound tasks remain responsive due to sleep/wake behavior and interactive bias.
+- Throughput/fairness tradeoff becomes visible when two CPU-bound containers have very different nice values.
+
+## 5. Design Decisions and Tradeoffs
+
+### 5.1 Namespace Isolation
+
+- Choice: clone + chroot per container with dedicated writable rootfs copy.
+- Tradeoff: simpler than pivot_root, but weaker against certain escape patterns if misconfigured.
+- Why this choice: lower implementation complexity while meeting assignment isolation goals.
+
+### 5.2 Supervisor Architecture
+
+- Choice: single long-running supervisor process with in-memory metadata list.
+- Tradeoff: centralized point of failure.
+- Why this choice: simple lifecycle management, signal reaping, and consistent command handling.
+
+### 5.3 IPC and Logging
+
+- Choice: UNIX socket for control and pipes for log stream, with bounded buffer and threads.
+- Tradeoff: more moving parts than direct file writes.
+- Why this choice: clear separation of command traffic vs high-volume log data, and controlled backpressure.
+
+### 5.4 Kernel Monitor
+
+- Choice: character device + ioctl register/unregister + periodic timer scan.
+- Tradeoff: periodic checks may enforce with up to one interval delay.
+- Why this choice: straightforward kernel/user integration with explicit container registration.
+
+### 5.5 Scheduling Experiment Setup
+
+- Choice: use cpu_hog and io_pulse with configurable nice.
+- Tradeoff: simple workloads do not model all real applications.
+- Why this choice: reproducible, interpretable behavior for explaining scheduler policy.
+
+## 6. Scheduler Experiment Results
+
+### 6.1 Raw Data (from runtime logs)
+
+Observed workload completion excerpts:
+
+- high_prio.log: cpu_hog done duration=15
+- low_prio.log: cpu_hog done duration=15
+
+During execution, progress cadence and accumulator evolution differed, showing different CPU share over time despite equal configured duration.
+
+### 6.2 Example Comparison Table
+
+| Experiment | Container A | Container B | Setting Difference | Observation |
+|------------|-------------|-------------|--------------------|-------------|
+| CPU vs CPU | high_prio (cpu_hog) | low_prio (cpu_hog) | nice -10 vs nice +10 | higher-priority process gets more favorable runtime share |
+| CPU vs IO | alpha (cpu_hog) | beta (io_pulse) | same host, concurrent | I/O workload remains responsive while CPU task uses idle compute windows |
+
+### 6.3 Interpretation
+
+The Linux scheduler balances fairness and responsiveness. Nice values bias fair CPU allocation for always-runnable CPU-bound tasks. I/O-bound tasks, which sleep frequently, are scheduled promptly when they wake, improving perceived responsiveness.
+
+## Source Files Included
+
+- boilerplate/engine.c
+- boilerplate/monitor.c
+- boilerplate/monitor_ioctl.h
+- boilerplate/cpu_hog.c
+- boilerplate/io_pulse.c
+- boilerplate/memory_hog.c
+- boilerplate/Makefile
+
+## Notes
+
+- The control socket path is /tmp/mini_runtime.sock.
+- Per-container logs are written to logs/<container-id>.log.
+- Existing GitHub workflow in this repository references boilerplate paths; local build instructions above use boilerplate/ paths that match this repository layout.
