@@ -249,25 +249,48 @@ Running concurrent CPU-bound and I/O-bound workloads, and CPU-vs-CPU with differ
 
 ## 6. Scheduler Experiment Results
 
-### 6.1 Raw Data (from runtime logs)
+### 6.1 Experiment A — CPU vs CPU (nice -10 vs nice +10)
 
-Observed workload completion excerpts:
+Workload: two concurrent CPU-bound containers running `cpu_hog 15` with different `nice` values.
 
-- high_prio.log: cpu_hog done duration=15
-- low_prio.log: cpu_hog done duration=15
+Raw log excerpts (from `engine logs`):
 
-During execution, progress cadence and accumulator evolution differed, showing different CPU share over time despite equal configured duration.
+~~~
+high_prio: cpu_hog done duration=15 accumulator=10147454168472947404
+low_prio:  cpu_hog done duration=15 accumulator=2929117180454748030
+~~~
 
-### 6.2 Example Comparison Table
+Note: `cpu_hog` runs for a fixed wall-clock duration (15s). The `accumulator` value grows proportionally to how many CPU cycles the process received (more CPU time ⇒ more loop iterations ⇒ larger accumulator).
 
-| Experiment | Container A | Container B | Setting Difference | Observation |
-|------------|-------------|-------------|--------------------|-------------|
-| CPU vs CPU | high_prio (cpu_hog) | low_prio (cpu_hog) | nice -10 vs nice +10 | higher-priority process gets more favorable runtime share |
-| CPU vs IO | alpha (cpu_hog) | beta (io_pulse) | same host, concurrent | I/O workload remains responsive while CPU task uses idle compute windows |
+Comparison table:
 
-### 6.3 Interpretation
+| Container | nice | Duration (s) | Final accumulator | Approx. CPU share (normalized) |
+|----------|------|--------------|-------------------|--------------------------------|
+| high_prio | -10 | 15 | 10147454168472947404 | ~77.6% |
+| low_prio  | +10 | 15 | 2929117180454748030  | ~22.4% |
 
-The Linux scheduler balances fairness and responsiveness. Nice values bias fair CPU allocation for always-runnable CPU-bound tasks. I/O-bound tasks, which sleep frequently, are scheduled promptly when they wake, improving perceived responsiveness.
+Derived comparison: `high_prio` received about $\frac{10147454168472947404}{2929117180454748030} \approx 3.46\times$ the CPU runtime of `low_prio` during the same 15 seconds.
+
+### 6.2 Experiment B — CPU vs I/O (cpu_hog + io_pulse)
+
+Workload: run `cpu_hog` (CPU-bound) concurrently with `io_pulse` (I/O + sleep) on the same host.
+
+Raw log excerpt (from `engine logs beta`):
+
+~~~
+io_pulse wrote iteration=1
+io_pulse wrote iteration=2
+...
+io_pulse wrote iteration=30
+~~~
+
+With `io_pulse 30 100`, the workload performs 30 iterations with a 100ms sleep between iterations (nominal completion time ~3 seconds plus small I/O overhead). The log shows `io_pulse` continued to run and completed its iterations even while CPU-bound work was active.
+
+### 6.3 What This Shows About Linux Scheduling
+
+- Under Linux CFS, `nice` does not change the *wall-clock* duration of a time-based loop like `cpu_hog`; both containers still run for 15 seconds.
+- `nice` *does* bias CPU allocation among runnable CPU-bound tasks: the much larger `accumulator` for `nice -10` is direct evidence of higher CPU share.
+- I/O-oriented tasks (that frequently sleep) tend to remain responsive: when `io_pulse` wakes up after `usleep()`, it gets scheduled quickly enough to keep making progress and emit iterations while CPU hogs consume the remaining CPU time.
 
 ## Source Files Included
 
